@@ -1,0 +1,5 @@
+allowlist:
+  - gov
+  - court
+freshness_years: 2
+max_pages: 5

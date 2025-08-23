@@ -1,0 +1,11 @@
+collection: legal_chunks
+metric_type: COSINE
+index:
+  type: HNSW
+  params:
+    M: 36
+    efConstruction: 200
+search:
+  efSearch: 80
+retrieval:
+  k: 20

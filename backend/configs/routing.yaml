@@ -1,0 +1,3 @@
+pass_threshold:
+  min_dimension: 3
+  average: 4
