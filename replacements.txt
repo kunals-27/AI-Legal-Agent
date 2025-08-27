@@ -1,0 +1,4 @@
+﻿# Redact OpenAI-style keys
+regex:(sk-[A-Za-z0-9_-]{20,})==>***REMOVED***
+# Redact Firecrawl tokens
+regex:(fc-[0-9a-fA-F]{32,})==>***REMOVED***

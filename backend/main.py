@@ -24,7 +24,16 @@ def create_app() -> Flask:
 
     # CORS for React dev server
     origins = os.getenv("ALLOWED_ORIGINS", "*")
-    CORS(app, resources={r"/*": {"origins": origins}})
+    # Explicitly allow common methods and headers so preflight passes
+    CORS(
+        app,
+        resources={r"/*": {
+            "origins": [o.strip() for o in origins.split(",") if o.strip()] if origins != "*" else "*",
+            "methods": ["GET", "POST", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization"],
+            "supports_credentials": False,
+        }}
+    )
 
     # Register blueprints
     app.register_blueprint(health_bp)
