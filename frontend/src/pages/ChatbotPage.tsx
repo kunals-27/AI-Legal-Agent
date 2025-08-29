@@ -74,16 +74,34 @@ const ChatbotPage = () => {
 
       const data = await response.json();
 
+      // Build rich citations from RAG sources (R#) and Web sources (W#)
+      const ragSources: Source[] = Array.isArray(data.sources) ? data.sources : [];
+      const webSources: Array<{ url?: string; title?: string; snippet?: string }> = Array.isArray(data.web_sources) ? data.web_sources : [];
+
+      const ragCitations = ragSources.map((s, i) => ({
+        id: `R${i + 1}`,
+        title: `${s.source || 'Source'}${s.section ? ` • ${s.section}` : ''}`,
+        source: s.text || '',
+        link: '',
+      }));
+
+      const webCitations = webSources.map((w, i) => ({
+        id: `W${i + 1}`,
+        title: w.title || w.url || `Web ${i + 1}`,
+        source: w.snippet || w.url || '',
+        link: w.url || '',
+      }));
+
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         text: data.answer,
         isUser: false,
-        citations: data.citations.map((cit: any, index: number) => ({ ...cit, id: `cit-${index}`})),
-        sources: data.sources,
+        citations: [...ragCitations, ...webCitations],
+        sources: ragSources,
       };
 
       setMessages(prev => [...prev, aiMessage]);
-      setLastSources(data.sources);
+      setLastSources(ragSources);
 
     } catch (error) {
       const errorMessage: Message = {

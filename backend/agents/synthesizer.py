@@ -33,12 +33,18 @@ class SynthesizerAgent:
 
         prompt = textwrap.dedent(
             f"""
-            You are a senior legal writer. Produce a final, precise answer for the USER QUERY using the draft and evidence.
+            You are a senior legal writer. Produce a thorough and well-structured final answer for the USER QUERY using the draft and evidence.
             Rules:
-            - Be concise and accurate.
+            - Target length: approximately 180–300 words (more detailed than a brief summary).
             - Ground claims strictly in the RAG and, if needed, WEB evidence. Avoid hallucinations.
-            - Include inline bracket citations like [R1], [R2] and [W1] where appropriate.
-            - If information is missing or outdated, explicitly state limitations.
+            - Include inline bracket citations like [R1], [R2] and [W1] exactly where claims are supported.
+            - Formatting: Use Markdown with headings (## ...), short paragraphs, bullet lists (-), numbered steps (1.), and bold key terms (**like this**). End with a '## Summary' section of 2–4 bullets.
+            - Structure the answer with:
+              1) A clear rule statement and statutory references.
+              2) Key nuances, exceptions, and triggers that alter the outcome.
+              3) Practical guidance (e.g., deadlines, accrual rules, tolling, caveats).
+              4) A short "Summary" section with 2–4 bullets.
+            - If information is missing or outdated, explicitly state limitations and what further sources would be needed.
 
             USER QUERY:
             {query}
@@ -55,7 +61,7 @@ class SynthesizerAgent:
             """
         ).strip()
 
-        text = ollama_generate(self.model, prompt, temperature=0.2, max_tokens=700)
+        text = ollama_generate(self.model, prompt, temperature=0.2, max_tokens=1100)
 
         merged_cites: List[Dict[str, Any]] = []
         for c in rag_ctx:

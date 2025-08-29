@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { User, Bot, ExternalLink } from 'lucide-react';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 
 interface Citation {
   id: string;
@@ -20,19 +22,24 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isUser, citations = 
   const [expandedCitation, setExpandedCitation] = useState<string | null>(null);
 
   const renderMessageWithCitations = (text: string) => {
-    if (!citations.length) return text;
-
-    let processedText = text;
-    citations.forEach((citation, index) => {
-      const citationTag = `[R${index + 1}]`;
-      processedText = processedText.replace(
-        citationTag,
-        `<span class="citation-chip" data-citation="${citation.id}">${citationTag}</span>`
+    // 1) Convert Markdown -> HTML
+    const rawHtml = marked.parse(text || '');
+    // 2) Sanitize HTML
+    let safeHtml = DOMPurify.sanitize(rawHtml as string);
+    // 3) Replace [R#]/[W#] with clickable chips (by citation.id)
+    citations.forEach((citation) => {
+      const tag = `[${citation.id}]`;
+      // Use global replacement; escape brackets for regex
+      const re = new RegExp(escapeRegExp(tag), 'g');
+      safeHtml = safeHtml.replace(
+        re,
+        `<span class="citation-chip" data-citation="${citation.id}">${tag}</span>`
       );
     });
-
-    return processedText;
+    return safeHtml;
   };
+
+  const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   const handleCitationClick = (citationId: string) => {
     setExpandedCitation(expandedCitation === citationId ? null : citationId);
@@ -83,13 +90,13 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isUser, citations = 
             {citations.length > 0 && !isUser && !isError && (
               <div className="mt-4 pt-4 border-t border-slate-200/50">
                 <div className="flex flex-wrap gap-2">
-                  {citations.map((citation, index) => (
+                  {citations.map((citation) => (
                     <button
                       key={citation.id}
                       onClick={() => handleCitationClick(citation.id)}
                       className="inline-flex items-center px-3 py-1 text-xs font-medium bg-blue-50 text-blue-700 rounded-full hover:bg-blue-100 transition-colors"
                     >
-                      R{index + 1}
+                      {citation.id}
                     </button>
                   ))}
                 </div>
@@ -102,15 +109,17 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isUser, citations = 
                         <div key={citation.id} className="space-y-2">
                           <h4 className="font-medium text-slate-900">{citation.title}</h4>
                           <p className="text-sm text-slate-600">{citation.source}</p>
-                          <a
-                            href={citation.link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center space-x-1 text-sm text-blue-600 hover:text-blue-700"
-                          >
-                            <ExternalLink className="w-4 h-4" />
-                            <span>View Source</span>
-                          </a>
+                          {citation.link && (
+                            <a
+                              href={citation.link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center space-x-1 text-sm text-blue-600 hover:text-blue-700"
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                              <span>View Source</span>
+                            </a>
+                          )}
                         </div>
                       )
                     ))}
