@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Navbar from '../components/Navbar';
 import ChatMessage from '../components/ChatMessage';
 import QuickActions from '../components/QuickActions';
@@ -25,6 +25,13 @@ interface Message {
   isError?: boolean;
 }
 
+interface Conversation {
+  id: string;
+  title: string;
+  createdAt: number;
+  messages: Message[];
+}
+
 interface UploadedDocument {
   id: string;
   name: string;
@@ -39,12 +46,62 @@ const ChatbotPage = () => {
   const [uploadedDocs, setUploadedDocs] = useState<UploadedDocument[]>([]);
   const [activeTab, setActiveTab] = useState('General');
   const [lastSources, setLastSources] = useState<Source[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const tabs = ['General', 'Contracts', 'Case Law', 'Regulations', 'Custom Docs'];
 
   const [isLoading, setIsLoading] = useState(false);
+
+  // --- Conversation persistence helpers ---
+  const STORAGE_KEY = 'ai_legal_conversations_v1';
+
+  const loadConversations = (): Conversation[] => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const saveConversations = (items: Conversation[]) => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  };
+
+  useEffect(() => {
+    const items = loadConversations();
+    setConversations(items);
+    if (items.length > 0) {
+      setActiveSessionId(items[0].id);
+      setMessages(items[0].messages || []);
+      // best-effort: recover last sources from last AI message
+      const lastAi = [...(items[0].messages || [])].reverse().find(m => !m.isUser && m.sources && m.sources.length);
+      if (lastAi?.sources) setLastSources(lastAi.sources);
+    }
+  }, []);
+
+  const startNewConversation = () => {
+    const id = `c-${Date.now()}`;
+    const conv: Conversation = { id, title: 'New Chat', createdAt: Date.now(), messages: [] };
+    const items = [conv, ...conversations];
+    setConversations(items);
+    setActiveSessionId(id);
+    setMessages([]);
+    setLastSources([]);
+    saveConversations(items);
+  };
+
+  const selectConversation = (id: string) => {
+    const conv = conversations.find(c => c.id === id);
+    if (!conv) return;
+    setActiveSessionId(id);
+    setMessages(conv.messages || []);
+    const lastAi = [...(conv.messages || [])].reverse().find(m => !m.isUser && m.sources && m.sources.length);
+    setLastSources(lastAi?.sources || []);
+  };
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
@@ -55,7 +112,42 @@ const ChatbotPage = () => {
       isUser: true,
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    // Ensure we have an active conversation
+    let currentId = activeSessionId;
+    if (!currentId) {
+      const id = `c-${Date.now()}`;
+      currentId = id;
+      const newConv: Conversation = {
+        id,
+        title: inputValue.slice(0, 60) || 'New Chat',
+        createdAt: Date.now(),
+        messages: [],
+      };
+      const items = [newConv, ...conversations];
+      setConversations(items);
+      setActiveSessionId(id);
+      saveConversations(items);
+    }
+
+    setMessages(prev => {
+      const updated = [...prev, userMessage];
+      // persist to storage
+      const items = loadConversations().length ? loadConversations() : conversations;
+      const idx = items.findIndex(c => c.id === currentId);
+      if (idx >= 0) {
+        const updatedConv = { ...items[idx] };
+        // Update title from first user message if placeholder
+        if (!updatedConv.messages?.length || updatedConv.title === 'New Chat') {
+          updatedConv.title = userMessage.text.slice(0, 60) || 'New Chat';
+        }
+        updatedConv.messages = [...(updatedConv.messages || []), userMessage];
+        const newItems = [...items];
+        newItems[idx] = updatedConv;
+        setConversations(newItems);
+        saveConversations(newItems);
+      }
+      return updated;
+    });
     setInputValue('');
     setIsLoading(true);
 
@@ -100,8 +192,22 @@ const ChatbotPage = () => {
         sources: ragSources,
       };
 
-      setMessages(prev => [...prev, aiMessage]);
-      setLastSources(ragSources);
+      setMessages(prev => {
+        const updated = [...prev, aiMessage];
+        setLastSources(ragSources);
+        // persist to storage
+        const items = loadConversations().length ? loadConversations() : conversations;
+        const idx = items.findIndex(c => c.id === (activeSessionId || currentId));
+        if (idx >= 0) {
+          const updatedConv = { ...items[idx] };
+          updatedConv.messages = [...(updatedConv.messages || []), aiMessage];
+          const newItems = [...items];
+          newItems[idx] = updatedConv;
+          setConversations(newItems);
+          saveConversations(newItems);
+        }
+        return updated;
+      });
 
     } catch (error) {
       const errorMessage: Message = {
@@ -291,6 +397,38 @@ const ChatbotPage = () => {
 
               <div className={`${isDrawerOpen ? 'translate-x-0' : 'translate-x-full'} lg:translate-x-0 fixed lg:relative top-0 right-0 h-full lg:h-auto w-80 lg:w-full bg-white lg:bg-transparent z-40 transform transition-transform duration-300 lg:transform-none`}>
                 <div className="p-6 lg:p-0 space-y-6 h-full overflow-y-auto">
+                  {/* Conversations */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-slate-900">Conversations</h3>
+                      <button
+                        onClick={startNewConversation}
+                        className="text-sm px-2 py-1 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+                      >
+                        New
+                      </button>
+                    </div>
+                    <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                      {conversations.length === 0 ? (
+                        <p className="text-slate-500 text-sm">No conversations yet.</p>
+                      ) : (
+                        conversations.map(conv => (
+                          <button
+                            key={conv.id}
+                            onClick={() => selectConversation(conv.id)}
+                            className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                              conv.id === activeSessionId
+                                ? 'border-blue-200 bg-blue-50 text-blue-800'
+                                : 'border-slate-200 hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className="text-sm font-medium truncate">{conv.title || 'Untitled'}</div>
+                            <div className="text-xs text-slate-500">{new Date(conv.createdAt).toLocaleString()}</div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
                   {/* Uploaded Documents */}
                   <div className="bg-white rounded-2xl border border-slate-200 p-6">
                     <h3 className="text-lg font-semibold text-slate-900 mb-4">Uploaded Documents</h3>
